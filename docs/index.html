@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>Scoreboard Matrix</title>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .fade-in {
+            animation: fadeIn 0.3s ease-out forwards;
+        }
+        .loading-spinner {
+            border: 3px solid #374151;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        table {
+            border-collapse: separate;
+            border-spacing: 2px;
+        }
+        th, td {
+            padding: 12px;
+            text-align: center;
+            font-weight: bold;
+            transition: all 0.2s ease;
+        }
+        th {
+            background-color: #1f2937;
+            color: #60a5fa;
+            border: 2px solid #374151;
+        }
+        td {
+            color: white;
+            border: 2px solid #374151;
+        }
+        .green {
+            background-color: #166534;
+            color: white;
+        }
+        .red {
+            background-color: #991b1b;
+            color: white;
+        }
+        td:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-gray-900 to-gray-800 min-h-screen p-4 md:p-8">
+    <div class="max-w-7xl mx-auto">
+        <!-- Header -->
+        <div class="text-center mb-8 fade-in">
+            <h1 class="text-5xl font-bold text-white mb-2">RTDT Challenge</h1>
+            <p class="text-gray-300 text-lg">Submission Results</p>
+            <div id="lastUpdate" class="text-sm text-gray-400 mt-2"></div>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loading" class="flex justify-center items-center py-20">
+            <div class="loading-spinner"></div>
+        </div>
+
+        <!-- Error State -->
+        <div id="error" class="hidden bg-red-900 border border-red-600 text-red-200 px-4 py-3 rounded-lg mb-6">
+            <strong>Error:</strong> <span id="errorMessage"></span>
+        </div>
+
+        <!-- Matrix Table -->
+        <div id="matrixContainer" class="bg-gray-800 rounded-lg shadow-2xl p-6 overflow-x-auto fade-in" style="animation-delay: 0.2s">
+            <table id="scoreTable" class="w-full"></table>
+        </div>
+
+        <!-- Stats -->
+        <div id="stats" class="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4 fade-in" style="animation-delay: 0.4s"></div>
+
+        <!-- Legend -->
+        <div class="mt-6 bg-gray-800 rounded-lg shadow-md p-6 fade-in" style="animation-delay: 0.6s">
+            <h3 class="text-xl font-bold text-white mb-4">Legend</h3>
+            <div class="flex flex-wrap gap-4">
+                <div class="flex items-center">
+                    <div class="w-8 h-8 green rounded mr-2"></div>
+                    <span class="text-gray-300">Not corrupted data</span>
+                </div>
+                <div class="flex items-center">
+                    <div class="w-8 h-8 red rounded mr-2"></div>
+                    <span class="text-gray-300">Corrupted data</span>
+                </div>
+            </div>
+        </div>
+    <div class="mt-6 bg-gray-800 rounded-lg shadow-md p-6 fade-in" style="animation-delay: 0.6s">
+    <h3 class="text-xl font-bold text-white mb-4">Corruption Predictions by Data Part</h3>
+    <div id="chartContainer" class="w-full" style="height: 400px;"></div>
+</div>
+
+<!-- Legend -->
+<div class="mt-6 bg-gray-800 rounded-lg shadow-md p-6 fade-in" style="animation-delay: 0.8s">
+    <h3 class="text-xl font-bold text-white mb-4">Legend</h3>
+    <div class="flex flex-wrap gap-4">
+        <div class="flex items-center">
+            <div class="w-8 h-8 green rounded mr-2"></div>
+            <span class="text-gray-300">Not corrupted data (0)</span>
+        </div>
+        <div class="flex items-center">
+            <div class="w-8 h-8 red rounded mr-2"></div>
+            <span class="text-gray-300">Corrupted data (not 0)</span>
+        </div>
+    </div>
+</div>
+
+<div class="mt-6 bg-gray-800 rounded-lg shadow-md p-6 fade-in" style="animation-delay: 0.6s">
+    <h3 class="text-xl font-bold text-white mb-4">Corruption Predictions by Data Part</h3>
+    <div id="chartContainer" class="w-full" style="height: 400px;">
+        <!-- We'll create the canvas dynamically -->
+    </div>
+</div>
+
+<!-- Legend -->
+<div class="mt-6 bg-gray-800 rounded-lg shadow-md p-6 fade-in" style="animation-delay: 0.8s">
+    <h3 class="text-xl font-bold text-white mb-4">Legend</h3>
+    <div class="flex flex-wrap gap-4">
+        <div class="flex items-center">
+            <div class="w-8 h-8 green rounded mr-2"></div>
+            <span class="text-gray-300">Not corrupted data (0)</span>
+        </div>
+        <div class="flex items-center">
+            <div class="w-8 h-8 red rounded mr-2"></div>
+            <span class="text-gray-300">Corrupted data (not 0)</span>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Use the raw GitHub URL
+    const CSV_URL = 'https://raw.githubusercontent.com/Saurausli/challange_scoreboard/main/docs/ranking.csv';
+    let allData = [];
+
+    function loadMatrix() {
+        console.log('🔍 Loading CSV from:', CSV_URL);
+        Papa.parse(CSV_URL, {
+            download: true,
+            header: false,
+            skipEmptyLines: true,
+            complete: function(results) {
+                console.log('✅ CSV loaded! Rows:', results.data.length);
+                console.log('📊 First row:', results.data[0]);
+                allData = results.data;
+                document.getElementById('loading').style.display = 'none';
+                renderMatrix();
+                updateTimestamp();
+                renderChart();
+            },
+            error: function(error) {
+                console.error('❌ Error loading CSV:', error);
+                document.getElementById('loading').style.display = 'none';
+                showError('Could not load CSV: ' + error.message);
+            }
+        });
+    }
+
+    function renderMatrix() {
+        const table = document.getElementById('scoreTable');
+        table.innerHTML = '';
+        
+        if (allData.length === 0) {
+            showError('No data found in CSV file');
+            return;
+        }
+
+        allData.forEach((row, i) => {
+            const tr = document.createElement('tr');
+            tr.style.animationDelay = `${i * 0.05}s`;
+            tr.className = 'fade-in';
+            
+            row.forEach((cell, j) => {
+                const element = i === 0 ? document.createElement('th') : document.createElement('td');
+                element.textContent = cell;
+                
+                // Apply color coding for data cells (not headers)
+                if (i > 0 && j > 0) {
+                    element.className = cell === '0' ? 'green' : 'red';
+                }
+                
+                tr.appendChild(element);
+            });
+            
+            table.appendChild(tr);
+        });
+
+        // Render stats after matrix
+        renderStats();
+    }
+
+    function renderStats() {
+        // Count submissions (all rows except header)
+        const totalSubmissions = allData.length > 1 ? allData.length - 1 : 0;
+        
+        // Count unique participants (unique values in first column, excluding header)
+        const uniqueParticipants = new Set(
+            allData.slice(1).map(row => row[0]).filter(id => id)
+        ).size;
+
+        // Count total cells with value "0"
+        const totalZeros = allData.slice(1).reduce((count, row) => {
+            return count + row.slice(2).filter(cell => cell === '0').length;
+        }, 0);
+
+        document.getElementById('stats').innerHTML = `
+            <div class="bg-gray-800 rounded-lg shadow-md p-6 text-center">
+                <div class="text-4xl font-bold text-blue-400">${totalSubmissions}</div>
+                <div class="text-gray-300 mt-2">Total Submissions</div>
+            </div>
+            <div class="bg-gray-800 rounded-lg shadow-md p-6 text-center">
+                <div class="text-4xl font-bold text-green-400">${uniqueParticipants}</div>
+                <div class="text-gray-300 mt-2">Unique Participants</div>
+            </div>
+        `;
+    }
+
+    function renderChart() {
+        // Skip if no data or only header
+        if (allData.length <= 1) {
+            console.warn('No data to render chart');
+            return;
+        }
+
+        // Create canvas element if it doesn't exist
+        let canvas = document.getElementById('corruptionChartCanvas');
+        if (!canvas) {
+            canvas = document.createElement('canvas');
+            canvas.id = 'corruptionChartCanvas';
+            canvas.style.width = '100%';
+            canvas.style.height = '100%';
+            document.getElementById('chartContainer').appendChild(canvas);
+        }
+
+        // Get column headers (skip first two columns: ID and Name)
+        const headers = allData[0].slice(2);
+        
+        // Initialize arrays for chart data
+        const categories = headers.map((header, index) => `Part ${index + 1}`);
+        const zerosData = new Array(headers.length).fill(0);
+        const nonZerosData = new Array(headers.length).fill(0);
+        const totalSubmissions = allData.length - 1;
+        
+        // Count zeros and non-zeros for each column
+        allData.slice(1).forEach(row => {
+            const dataCells = row.slice(2); // Skip ID and Name columns
+            
+            dataCells.forEach((cell, colIndex) => {
+                if (cell === '0') {
+                    zerosData[colIndex]++;
+                } else {
+                    nonZerosData[colIndex]++;
+                }
+            });
+        });
+
+        // Convert counts to percentages
+        const zerosPercent = zerosData.map(count => (count / totalSubmissions) * 100);
+        const nonZerosPercent = nonZerosData.map(count => (count / totalSubmissions) * 100);
+
+        // Calculate total percentage for each bar (should always be 100%)
+        const totalPercent = zerosPercent.map((zero, i) => zero + nonZerosPercent[i]);
+
+        // Get canvas context
+        const ctx = canvas.getContext('2d');
+        
+        // Destroy existing chart if it exists
+        if (window.corruptionChart) {
+            window.corruptionChart.destroy();
+        }
+
+        window.corruptionChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: categories,
+                datasets: [
+                    {
+                        label: 'Not Corrupted (0)',
+                        data: zerosPercent,
+                        
+                        backgroundColor: 'rgba(34, 197, 94, 0.9)', //
+                        borderColor: 'rgba(34, 197, 94, 1)',
+                        borderWidth: 1,
+                        borderRadius: {
+                            topLeft: 0,
+                            topRight: 0,
+                            bottomLeft: 0,
+                            bottomRight: 0
+                        },
+                        stack: 'stacked'
+                    },
+                    {
+                        label: 'Corrupted (not 0)',
+                        data: nonZerosPercent,
+                        backgroundColor: 'rgba(239, 68, 68, 0.9)',
+                        borderColor: 'rgba(239, 68, 68, 1)',
+                        borderWidth: 1,
+                        borderRadius: {
+                            topLeft: 0,
+                            topRight: 0,
+                            bottomLeft: 5,
+                            bottomRight: 5
+                        },
+                        stack: 'stacked'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        callbacks: {
+                            label: function(context) {
+                                const value = context.raw.toFixed(1);
+                                const count = context.datasetIndex === 0 
+                                    ? zerosData[context.dataIndex] 
+                                    : nonZerosData[context.dataIndex];
+                                const total = totalPercent[context.dataIndex].toFixed(1);
+                                const percentage = context.datasetIndex === 0
+                                    ? `(${((context.raw / totalPercent[context.dataIndex]) * 100).toFixed(1)}% of this part)`
+                                    : '';
+                                return `${context.dataset.label}: ${value}% ${percentage} (${count} submissions)`;
+                            },
+                            footer: function(tooltipItems) {
+                                const index = tooltipItems[0].dataIndex;
+                                const total = totalPercent[index].toFixed(1);
+                                return `Total: ${total}% (${totalSubmissions} submissions)`;
+                            }
+                        },
+                        backgroundColor: 'rgba(17, 24, 39, 0.95)',
+                        titleColor: '#fff',
+                        bodyColor: '#fff',
+                        borderColor: 'rgba(255, 255, 255, 0.2)',
+                        borderWidth: 1,
+                        cornerRadius: 8,
+                        padding: 12
+                    },
+                    legend: {
+                        position: 'top',
+                        labels: {
+                            color: '#fff',
+                            font: {
+                                size: 14,
+                                weight: 'bold'
+                            },
+                            padding: 20,
+                            usePointStyle: true,
+                            pointStyle: 'rect'
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        stacked: true,
+                        title: {
+                            display: true,
+                            text: 'Data Parts',
+                            color: '#fff',
+                            font: {
+                                size: 16,
+                                weight: 'bold'
+                            },
+                            padding: {top: 10}
+                        },
+                        ticks: {
+                            color: '#ccc',
+                            font: {
+                                size: 12
+                            }
+                        },
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)',
+                            drawBorder: false
+                        }
+                    },
+                    y: {
+                        stacked: true,
+                        beginAtZero: true,
+                        max: 100,
+                        title: {
+                            display: true,
+                            text: 'Percentage of Submissions (%)',
+                            color: '#fff',
+                            font: {
+                                size: 16,
+                                weight: 'bold'
+                            },
+                            padding: {bottom: 10}
+                        },
+                        ticks: {
+                            color: '#ccc',
+                            font: {
+                                size: 12
+                            },
+                            callback: function(value) {
+                                return value + '%';
+                            },
+                            stepSize: 20
+                        },
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)',
+                            drawBorder: false
+                        }
+                    }
+                },
+                animation: {
+                    duration: 1500,
+                    easing: 'easeOutQuart',
+                    onComplete: function() {
+                        const chartInstance = this.chart;
+                        const ctx = chartInstance.ctx;
+                        ctx.font = Chart.helpers.fontString(Chart.defaults.font.size, 'bold', Chart.defaults.font.family);
+                        ctx.fillStyle = '#fff';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'bottom';
+                        
+                        chartInstance.data.datasets.forEach(function(dataset, i) {
+                            const meta = chartInstance.getDatasetMeta(i);
+                            meta.data.forEach(function(bar, index) {
+                                const value = dataset.data[index];
+                                if (value > 5) { // Only show label if segment is large enough
+                                    const x = bar.x;
+                                    const y = bar.y;
+                                    const height = bar.height;
+                                    
+                                    if (i === 0) { // Green segment (top)
+                                        ctx.fillText(value.toFixed(1) + '%', x, y + height/2);
+                                    } else { // Red segment (bottom)
+                                        ctx.fillText(value.toFixed(1) + '%', x, y - height/2);
+                                    }
+                                }
+                            });
+                        });
+                    }
+                },
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
+                }
+            }
+        });
+    }
+
+    function updateTimestamp() {
+        const now = new Date();
+        document.getElementById('lastUpdate').textContent = 
+            `Last updated: ${now.toLocaleString('en-US')}`;
+    }
+
+    function showError(message) {
+        document.getElementById('errorMessage').textContent = message;
+        document.getElementById('error').classList.remove('hidden');
+    }
+
+    // Initialize
+    loadMatrix();
+</script>
+</body>
+</html>
