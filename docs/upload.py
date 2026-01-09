@@ -6,6 +6,7 @@ import subprocess
 from io import StringIO
 from typing import Dict, List, Tuple, Optional
 from datetime import datetime
+import time
 
 char_set = ["0","0","0","0", "1", "2", "3", "4", "5", "6", "7"]
 ENABLE_GIT_PUSH = True
@@ -160,6 +161,15 @@ def push_to_github():
         print(f"Push failed: {e}", "ERROR")
         return False
 
+def main_loop():
+    while True:
+        df_combined = load_submissions_csv()
+        df_combined = get_all_df("ExampleSubmission")
+        combined = create_overall_df(df_combined)
+        combined.to_csv("docs/ranking.csv")
+        push_to_github()
+        time.sleep(30)
+    
 
 if __name__ == "__main__":
     # # df_combined = load_submissions_csv()
@@ -168,3 +178,4 @@ if __name__ == "__main__":
     combined = create_overall_df(df_combined)
     combined.to_csv("docs/ranking.csv")
     push_to_github()
+    
