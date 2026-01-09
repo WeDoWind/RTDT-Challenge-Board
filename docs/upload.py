@@ -13,6 +13,9 @@ GITHUB_REPO = Path().cwd()
 GIT = "git"
 DEPLOY_DIR = Path("docs")
 
+COLUMNS = ["session_id","data_quality"]
+SESSIONS = 150
+
 def create_random_overall_file(participantes_num = 10, data_subsets = 10):
     
     data = []
@@ -38,8 +41,20 @@ def create_random_individual_submissions(participantes_num = 10, sessions_num = 
             data["session_id"].append(i)
             data["data_quality"].append(random.choice(char_set))
         df = pd.DataFrame(data)
-        df.to_csv(f"Submission/participant_{p}-result_1.csv", index=False)
+        df.to_csv(f"ExampleSubmission/participant_{p}-result_1.csv", index=False)
 
+
+def check_df(df:pd.DataFrame):
+    if len(df.columns) != len(COLUMNS):
+        raise KeyError(f"Columns length incorrect: should be {len(COLUMNS)} is {len(df.columns)}")
+    for c in df.columns:
+        if c not in COLUMNS:
+            raise KeyError(f"{c} not in {COLUMNS}")
+    if len(df.index) != SESSIONS:
+        raise KeyError(f"Table length incorrect: should be {SESSIONS} is {len(df.index)}")
+    
+    if len(df["session_id"].unique()) != len(df["session_id"]):
+        raise KeyError(f"Session_ids occure multiple time")
 
 
 def load_submissions_csv(rclone_remote="switchdrive", folder="RTDT-Corrupted/Submissions"):
@@ -79,10 +94,14 @@ def load_submissions_csv(rclone_remote="switchdrive", folder="RTDT-Corrupted/Sub
                 check=True
             )
             df = pd.read_csv(StringIO(csv_result.stdout))
+            check_df(df)
+
             df["Submission"] = file.replace(".csv", "")
             dfs.append(df)
         except subprocess.CalledProcessError as e:
             print(f"Warning: Failed to download {file}: {e.stderr}")
+        except KeyError as e:
+            print(f"Warning: Table incorrect {file}: {e}")
     
     if not dfs:
         raise RuntimeError("No CSVs could be downloaded successfully.")
@@ -94,10 +113,14 @@ def get_all_df( path_to_dir, suffix=".csv" ):
     dfs = []
     filenames = listdir(path_to_dir)
     
-    for f in [ filename for filename in filenames if filename.endswith( suffix ) ]:
-        df = pd.read_csv(Path(path_to_dir)/Path(f))
-        df["Submission"] = f.replace(".csv", "")
-        dfs.append(df)
+    for file in [ filename for filename in filenames if filename.endswith( suffix ) ]:
+        try:
+            df = pd.read_csv(Path(path_to_dir)/Path(file))
+            check_df(df)
+            df["Submission"] = file.replace(".csv", "")
+            dfs.append(df)
+        except KeyError as e:
+            print(f"Warning: Table incorrect {file}: {e}")
     return pd.concat(dfs)
 
 def create_overall_df(df_combined: pd.DataFrame):
@@ -139,7 +162,9 @@ def push_to_github():
 
 
 if __name__ == "__main__":
-    df_combined = load_submissions_csv()
+    # # df_combined = load_submissions_csv()
+    # create_random_individual_submissions(participantes_num = 10, sessions_num = 150)
+    df_combined = get_all_df("ExampleSubmission")
     combined = create_overall_df(df_combined)
     combined.to_csv("docs/ranking.csv")
     push_to_github()
